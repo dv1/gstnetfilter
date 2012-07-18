@@ -47,7 +47,8 @@ enum
 enum
 {
 	PROP_0 = 0, /* GStreamer disallows properties with id 0 -> using dummy enum to prevent 0 */
-	PROP_FILTER_ADDRESS
+	PROP_FILTER_ADDRESS,
+	PROP_ENABLED
 };
 
 
@@ -132,6 +133,17 @@ static void gst_netfilter_class_init(GstNetfilterClass *klass)
 			G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS
 		)
 	);
+	g_object_class_install_property(
+		object_class,
+		PROP_ENABLED,
+		g_param_spec_boolean(
+			"enabled",
+			"Enable/disable filtering",
+			"If set to true, filtering is enabled, otherwise it is disabled, and just passes through packets",
+			TRUE,
+			G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS
+		)
+	);
 }
 
 
@@ -146,6 +158,8 @@ static void gst_netfilter_init(GstNetfilter *netfilter, GstNetfilterClass *klass
 	/* Create pads out of the templates defined earlier */
 	netfilter->sinkpad = gst_pad_new_from_static_template(&sink_template, "sink");
 	netfilter->srcpad = gst_pad_new_from_static_template(&src_template, "src");
+
+	netfilter->filtering_enabled = TRUE;
 
 	/* Set chain and setcaps functions for the sink pad */
 	gst_pad_set_chain_function(netfilter->sinkpad, gst_netfilter_chain);
@@ -164,7 +178,7 @@ static GstFlowReturn gst_netfilter_chain(GstPad *pad, GstBuffer *packet)
 	netfilter = GST_NETFILTER(GST_PAD_PARENT(pad));
 	ret = GST_FLOW_OK;
 
-	if (GST_IS_NETBUFFER(packet))
+	if (netfilter->filtering_enabled && GST_IS_NETBUFFER(packet))
 	{
 		/* Packet is a netbuffer -> get its source address and compare */
 
@@ -213,7 +227,7 @@ static GstFlowReturn gst_netfilter_chain(GstPad *pad, GstBuffer *packet)
 	}
 	else
 	{
-		/* Packet is not a netbuffer; just pass it through */
+		/* Packet is not a netbuffer, or filtering is disabled; just pass it through */
 		ret = gst_pad_push(netfilter->srcpad, packet);
 	}
 
@@ -274,6 +288,12 @@ static void gst_netfilter_set_property(GObject *object, guint prop_id, GValue co
 
 			break;
 		}
+		case PROP_ENABLED:
+		{
+			netfilter->filtering_enabled = g_value_get_boolean(value);
+			GST_DEBUG_OBJECT(netfilter, "Filtering is %s", netfilter->filtering_enabled ? "enabled" : "disabled");
+			break;
+		}
 		default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
 			break;
@@ -299,6 +319,11 @@ static void gst_netfilter_get_property(GObject *object, guint prop_id, GValue *v
 			/* Returning the address as IP address */
 			gst_netaddress_to_string(&(netfilter->filter_address), str, GST_NETADDRESS_MAX_LEN);
 			g_value_set_string(value, str);
+			break;
+		}
+		case PROP_ENABLED:
+		{
+			g_value_set_boolean(value, netfilter->filtering_enabled);
 			break;
 		}
 		default:

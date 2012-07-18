@@ -44,6 +44,7 @@ struct _GstNetfilter
 {
 	GstElement element;
 
+	gboolean filtering_enabled;
 	GstNetAddress filter_address;
 	GstPad
 		*sinkpad,
